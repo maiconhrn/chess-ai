@@ -1,18 +1,19 @@
 #! /usr/bin/python3
 
+import argparse
+import sys
 from math import inf
 from typing import Optional
+
 import chess
-import argparse
 import chess.engine
 from chess.svg import board
-
 
 PIECE_VALUES = {
     "R": 50, "r": 50,
     "N": 30, "n": 30,
     "B": 30, "b": 30,
-    "Q": 300, "q": 300,
+    "Q": 90, "q": 90,
     "K": 900, "k": 900,
     "P": 10, "p": 10,
 }
@@ -74,7 +75,7 @@ def evaluateHeuristic(board: Board, color: chess.Color):
         return board.blackScore - board.whiteScore
 
 
-def minimax(board: Board, depth: int, maximizingPlayer: bool):
+def minimax(board: Board, depth: int, alfa: int, beta: int, maximizingPlayer: bool):
     if depth == 0 or board.is_game_over():
         return None, evaluateHeuristic(board, chess.WHITE)
 
@@ -83,23 +84,31 @@ def minimax(board: Board, depth: int, maximizingPlayer: bool):
 
         for move in board.legal_moves:
             board.push(move)
-            currEval = minimax(board, depth - 1, False)[1]
+            currEval = minimax(board, depth - 1, alfa, beta, False)[1]
             board.pop()
             if currEval > maxEval:
                 maxEval = currEval
                 bestMove = move
+
+            alfa = max(alfa, currEval)
+            if beta <= alfa:
+                break
 
         return bestMove, maxEval
     else:
         minEval = inf
         for move in board.legal_moves:
             board.push(move)
-            currEval = minimax(board, depth - 1, True)[1]
+            currEval = minimax(board, depth - 1, alfa, beta, True)[1]
             board.pop()
 
             if currEval < minEval:
                 minEval = currEval
                 bestMove = move
+
+            beta = min(beta, currEval)
+            if beta <= alfa:
+                break
 
         return bestMove, minEval
 
@@ -149,7 +158,7 @@ def playerMove(board: Board):
 
 def minimaxMove(board: Board):
     print("Computer turn:")
-    move = minimax(board, 4, True)[0]
+    move = minimax(board, 5, -inf, inf, True)[0]
     board.push(move)
     boardAux.push(move)
 
@@ -166,7 +175,7 @@ def main():
     if engine:
         engine.configure({"Skill Level": 1})
 
-    while n < 100:
+    while not board.is_game_over():
         if n % 2 == 0:
             printLegalMoves(board)
             engineMove(board, engine) if engine else playerMove(board)
@@ -177,6 +186,11 @@ def main():
 
         printBoard(board)
         print("========================================", end="\n\n")
+
+    print("Game over")
+    print("Result: " + board.result())
+
+    sys.exit()
 
 
 if __name__ == "__main__":
