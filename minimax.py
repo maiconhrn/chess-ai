@@ -1,153 +1,42 @@
 #! /usr/bin/python3
+# -*- coding: utf-8 -*-
 
 import argparse
+import random
 from math import inf
+from typing import List
 
 import chess
 import chess.engine
 
-PIECES_VALUES = {
-    chess.BISHOP: 330,
-    chess.KING: 20000,
-    chess.KNIGHT: 320,
-    chess.PAWN: 100,
-    chess.QUEEN: 900,
-    chess.ROOK: 500,
-}
-
-MAX_SCORE = 23000
-
-PIECE_SQUARED_TABLES = {
-    chess.BISHOP: (
-        (-20, -10, -10, -10, -10, -10, -10, -20),
-        (-10,   0,   0,   0,   0,   0,   0, -10),
-        (-10,   0,   5,  10,  10,   5,   0, -10),
-        (-10,   5,   5,  10,  10,   5,   5, -10),
-        (-10,   0,  10,  10,  10,  10,   0, -10),
-        (-10,  10,  10,  10,  10,  10,  10, -10),
-        (-10,   5,   0,   0,   0,   0,   5, -10),
-        (-20, -10, -10, -10, -10, -10, -10, -20),
-    ),
-    chess.KING: (
-        (-30, -40, -40, -50, -50, -40, -40, -30),
-        (-30, -40, -40, -50, -50, -40, -40, -30),
-        (-30, -40, -40, -50, -50, -40, -40, -30),
-        (-30, -40, -40, -50, -50, -40, -40, -30),
-        (-20, -30, -30, -40, -40, -30, -30, -20),
-        (-10, -20, -20, -20, -20, -20, -20, -10),
-        (20,  20,   0,   0,   0,   0,  20,  20),
-        (20,  30,  10,   0,   0,  10,  30,  20),
-    ),
-    chess.KNIGHT: (
-        (-50, -40, -30, -30, -30, -30, -40, -50),
-        (-40, -20,   0,   0,   0,   0, -20, -40),
-        (-30,   0,  10,  15,  15,  10,   0, -30),
-        (-30,   5,  15,  20,  20,  15,   5, -30),
-        (-30,   0,  15,  20,  20,  15,   0, -30),
-        (-30,   5,  10,  15,  15,  10,   5, -30),
-        (-40, -20,   0,   5,   5,   0, -20, -40),
-        (-50, -40, -30, -30, -30, -30, -40, -50),
-    ),
-    chess.PAWN: (
-        (0,   0,   0,   0,   0,   0,   0,   0),
-        (50,  50,  50,  50,  50,  50,  50,  50),
-        (10,  10,  20,  30,  30,  20,  10,  10),
-        (5,   5,  10,  25,  25,  10,   5,   5),
-        (0,   0,   0,  20,  20,   0,   0,   0),
-        (5,  -5, -10,   0,   0, -10,  -5,   5),
-        (5,  10,  10, -20, -20,  10,  10,   5),
-        (0,   0,   0,   0,   0,   0,   0,   0),
-    ),
-    chess.QUEEN: (
-        (-20, -10, -10,  -5,  -5, -10, -10, -20),
-        (-10,   0,   0,   0,   0,   0,   0, -10),
-        (-10,   0,   5,   5,   5,   5,   0, -10),
-        (-5,   0,   5,   5,   5,   5,   0,  -5),
-        (0,   0,   5,   5,   5,   5,   0,  -5),
-        (-10,   5,   5,   5,   5,   5,   0, -10),
-        (-10,   0,   5,   0,   0,   0,   0, -10),
-        (-20, -10, -10,  -5,  -5, -10, -10, -20),
-    ),
-    chess.ROOK: (
-        (0,   0,   0,   0,   0,   0,   0,   0),
-        (5,  10,  10,  10,  10,  10,  10,   5),
-        (-5,   0,   0,   0,   0,   0,   0,  -5),
-        (-5,   0,   0,   0,   0,   0,   0,  -5),
-        (-5,   0,   0,   0,   0,   0,   0,  -5),
-        (-5,   0,   0,   0,   0,   0,   0,  -5),
-        (-5,   0,   0,   0,   0,   0,   0,  -5),
-        (0,   0,   0,   5,   5,   0,   0,   0),
-    ),
-}
-
-PIECE_SQUARED_TABLES = {key: tuple(reversed(list(value)))
-                        for key, value in PIECE_SQUARED_TABLES.items()}
-
-REVERSED_PIECE_SQUARED_TABLES = {key: tuple([
-                                            piece[::-1]
-                                            for piece in value][::-1])
-                                 for key, value in PIECE_SQUARED_TABLES.items()}
+from board import Board
+from config import PIECE_VALUES
+from tables import *
 
 # nedded by error on use custom Board class with chess.Engine.play
 boardAux = chess.Board()
 
 
-class Board(chess.Board):
-    def __init__(self):
-        super().__init__()
-        self.whiteScore = MAX_SCORE
-        self.blackScore = MAX_SCORE
+def isEndGame(board: chess.Board):
+    counter = 0
+    for square in chess.SQUARES:
+        piece = board.piece_at(square)
+        if not piece:
+            continue
+        if piece.piece_type is not chess.PAWN and piece.piece_type is not chess.KING:
+            counter += 1
+            if counter > 4:
+                return False
 
-    def push(self: chess.Board, move: chess.Move) -> None:
-        if self.is_capture(move):
-            if not self.is_en_passant(move):
-                capturedPiece = self.piece_at(move.to_square)
-                if capturedPiece.color == chess.WHITE:
-                    self.whiteScore -= PIECES_VALUES[capturedPiece.piece_type]
-                else:
-                    self.blackScore -= PIECES_VALUES[capturedPiece.piece_type]
-            else:
-                attackPiece = self.piece_at(move.from_square)
-                if attackPiece.color == chess.WHITE:
-                    self.blackScore -= PIECES_VALUES[attackPiece.piece_type]
-                else:
-                    self.whiteScore -= PIECES_VALUES[attackPiece.piece_type]
-
-        super().push(move)
-
-    def pop(self: chess.Board) -> chess.Move:
-        poppedMove = super().pop()
-
-        if self.is_capture(poppedMove):
-            if not self.is_en_passant(poppedMove):
-                capturedPiece = self.piece_at(poppedMove.to_square)
-                if capturedPiece.color == chess.WHITE:
-                    self.whiteScore += PIECES_VALUES[capturedPiece.piece_type]
-                else:
-                    self.blackScore += PIECES_VALUES[capturedPiece.piece_type]
-            else:
-                attackPiece = self.piece_at(poppedMove.from_square)
-                if attackPiece.color == chess.WHITE:
-                    self.blackScore += PIECES_VALUES[attackPiece.piece_type]
-                else:
-                    self.whiteScore += PIECES_VALUES[attackPiece.piece_type]
-
-        return poppedMove
-
-    def gives_mate(self, move: chess.Move) -> bool:
-        self.push(move)
-        isMate = self.is_checkmate()
-        self.pop()
-
-        return isMate
+    return True
 
 
 def moveGivesCheckValuesHeuristic(board: Board, move: chess.Move, maximizingColor: chess.Color):
     if board.gives_mate(move):
-        return 1000 if board.color_at(move.from_square) == maximizingColor else -1000
+        return inf if board.color_at(move.from_square) == maximizingColor else -inf
 
     if board.gives_check(move):
-        return 1 if board.color_at(move.from_square) == maximizingColor else -1
+        return 100 if board.color_at(move.from_square) == maximizingColor else -100
 
     return 0
 
@@ -156,31 +45,37 @@ def piecesMovesValuesHeuristic(board: Board, move: chess.Move, maximizingColor: 
     squareValues = {"e4": 50, "e5": 50, "d4": 50, "d5": 50, "c6": 25, "d6": 25, "e6": 25, "f6": 25,
                     "c3": 25, "d3": 25, "e3": 25, "f3": 25, "c4": 25, "c5": 25, "f4": 25, "f5": 25}
     if move.to_square in squareValues:
-        value = squareValues[move.to_square]   
+        value = squareValues[move.to_square]
         return value if board.turn == maximizingColor else -value
     else:
         return 0
 
 
-def piecesSqauredTableValuesHeuristic(piece: chess.Piece, square: chess.Square, maximizingColor: chess.Color):
+def piecesSqauredTableValuesHeuristic(piece: chess.Piece, square: chess.Square, maximizingColor: chess.Color, endGame: bool):
     row = square // 8
     column = square % 8
 
-    if piece.color == chess.WHITE:
-        picesSquaredTable = PIECE_SQUARED_TABLES.get(piece.piece_type)
-    else:
-        picesSquaredTable = REVERSED_PIECE_SQUARED_TABLES.get(piece.piece_type)
+    if endGame and piece.piece_type == chess.KING:
+        if piece.color == chess.WHITE:
+            return KING_END_GAME_SQUARE_TABLE[row][column]
+        else:
+            return REVERSED_KING_END_GAME_SQUARE_TABLE[row][column]
 
-    value = picesSquaredTable[row][column]
+    if piece.color == chess.WHITE:
+        picesSquareTable = PIECE_SQUARE_TABLES.get(piece.piece_type)
+    else:
+        picesSquareTable = REVERSED_PIECE_SQUARE_TABLES.get(piece.piece_type)
+
+    value = picesSquareTable[row][column]
 
     return value if piece.color == maximizingColor else -value
 
 
-def defendingPieceMovesValuesHeuristic(board: Board, piece: chess.Piece, square: chess.Square, maximizingColor: chess.Color):
+def defendingPieceMovesValuesHeuristic(board: Board, square: chess.Square, maximizingColor: chess.Color):
     if board.is_attacked_by(maximizingColor,  square):
-        value = 10
+        value = 30
     elif board.is_attacked_by(not maximizingColor,  square):
-        value = -10
+        value = -30
     else:
         value = 0
 
@@ -199,20 +94,63 @@ def evaluateHeuristic(board: Board, maximizingColor: chess.Color):
 
     h1 = piecesValuesHeuristic(board, maximizingColor)
 
-    for move in board.legal_moves:
-        h2 += piecesMovesValuesHeuristic(board, move, maximizingColor)
-        h3 += moveGivesCheckValuesHeuristic(board, move, maximizingColor)
+    # for move in board.legal_moves:
+    #     h2 += piecesMovesValuesHeuristic(board, move, maximizingColor)
+    #     h3 += moveGivesCheckValuesHeuristic(board, move, maximizingColor)
 
-    for square in range(64):
+    for square in chess.SQUARES:
         piece = board.piece_at(square)
         if not piece:
             continue
 
-        h4 += piecesSqauredTableValuesHeuristic(piece, square, maximizingColor)
+        h4 += piecesSqauredTableValuesHeuristic(
+            piece, square, maximizingColor, board.endGame)
         h5 += defendingPieceMovesValuesHeuristic(
-            board, piece, square, maximizingColor)
+            board, square, maximizingColor)
 
-    return h1 * 40 + h2 * 10 + h3 * 20 + h4 * 20 + h5 * 10
+    return h1 + h2 + h3 + h4 + h5
+
+
+def getOrderedMoves(board: chess.Board, maximizingColor: chess.Color, endGame: bool) -> List[chess.Move]:
+    # return sorted(board.legal_moves,
+    #               key=lambda move: moveValue(
+    #                   board, move, maximizingColor, endGame),
+    #               reverse=board.turn != maximizingColor)
+    return board.legal_moves
+
+
+def moveValue(board: chess.Board, move: chess.Move, maximizingColor: chess.Color, endgame: bool) -> float:
+    if move.promotion is not None:
+        return -float("inf") if board.turn != maximizingColor else float("inf")
+
+    piece = board.piece_at(move.from_square)
+    fromValue = piecesSqauredTableValuesHeuristic(
+        piece, move.from_square, maximizingColor, endgame)
+    toValue = piecesSqauredTableValuesHeuristic(
+        piece, move.to_square, maximizingColor, endgame)
+    positionChange = toValue - fromValue
+
+    captureValue = 0.0
+    if board.is_capture(move):
+        captureValue = evaluateCapture(board, move)
+
+    currentMoveValue = captureValue + positionChange
+    if board.turn != maximizingColor:
+        currentMoveValue = -currentMoveValue
+
+    return currentMoveValue
+
+
+def evaluateCapture(board: chess.Board, move: chess.Move) -> float:
+    if board.is_en_passant(move):
+        return PIECE_VALUES[chess.PAWN]
+    toPiece = board.piece_at(move.to_square)
+    fromPiece = board.piece_at(move.from_square)
+    if toPiece is None or fromPiece is None:
+        raise Exception(
+            f"Pieces were expected at _both_ {move.to_square} and {move.from_square}"
+        )
+    return PIECE_VALUES[toPiece.piece_type] - PIECE_VALUES[fromPiece.piece_type]
 
 
 def minimax(board: Board, depth: int, alpha: int, beta: int, maximizingPlayer: bool, maximizingColor: chess.Color):
@@ -222,7 +160,7 @@ def minimax(board: Board, depth: int, alpha: int, beta: int, maximizingPlayer: b
     if maximizingPlayer:
         maxEval = -inf
 
-        for move in board.legal_moves:
+        for move in getOrderedMoves(board, maximizingColor, board.endGame):
             board.push(move)
             currEval = minimax(board, depth - 1, alpha,
                                beta, False, maximizingColor)[1]
@@ -238,7 +176,8 @@ def minimax(board: Board, depth: int, alpha: int, beta: int, maximizingPlayer: b
         return bestMove, maxEval
     else:
         minEval = inf
-        for move in board.legal_moves:
+
+        for move in getOrderedMoves(board, maximizingColor, board.endGame):
             board.push(move)
             currEval = minimax(board, depth - 1, alpha,
                                beta, True, maximizingColor)[1]
@@ -255,6 +194,17 @@ def minimax(board: Board, depth: int, alpha: int, beta: int, maximizingPlayer: b
         return bestMove, minEval
 
 
+def randomStateMove(board: Board, depth: int, maximizingColor: chess.Color):
+    moveValues = {}
+    for _ in range(depth):
+        move = random.choice(list(board.legal_moves))
+        board.push(move)
+        moveValues[evaluateHeuristic(board, maximizingColor)] = move
+        board.pop()
+
+    return moveValues[max(moveValues)]
+
+
 def printLegalMoves(board: Board):
     print(
         f"Legal moves: {(', '.join(sorted([move.uci() for move in board.legal_moves])))}")
@@ -262,7 +212,7 @@ def printLegalMoves(board: Board):
 
 def printBoard(board: Board):
     print("Current board: ")
-    print(board)
+    print(board.unicode(invert_color=True, empty_square="."))
     print("White score: " + str(board.whiteScore))
     print("Black score: " + str(board.blackScore))
 
@@ -273,6 +223,8 @@ def getArgs():
                         help="Engine path to play with minimax algorithm")
     parser.add_argument("-xi", "--xitself", type=bool,
                         help="Minimax vs minimax")
+    parser.add_argument("-xr", "--xrandom", type=bool,
+                        help="Minimax vs random move algorithm")
     return parser.parse_args()
 
 
@@ -303,8 +255,14 @@ def playerMove(board: Board):
 
 def minimaxMove(board: Board, maximizingColor: chess.Color):
     global boardAux
-    print("Computer turn:")
-    move = minimax(board, 2, -inf, inf, True, maximizingColor)[0]
+    move = minimax(board, 4, -inf, inf, True, maximizingColor)[0]
+    board.push(move)
+    boardAux.push(move)
+
+
+def randomMove(board: Board, maximizingColor: chess.Color):
+    global boardAux
+    move = randomStateMove(board, 4, maximizingColor)
     board.push(move)
     boardAux.push(move)
 
@@ -321,16 +279,22 @@ def main():
 
     engine = args.xengine and chess.engine.SimpleEngine.popen_uci(args.xengine)
     itself = args.xitself
+    randomAlg = args.xrandom
 
     if engine:
-        engine.configure({"Skill Level": 1})
+        engine.configure({"Skill Level": 0})
 
     while not board.is_game_over():
+        board.endGame = isEndGame(board)
+
+        print(f"{who(board.turn)} turn:")
         if board.turn == chess.WHITE:
             if engine:
                 engineMove(board, engine)
             elif itself:
                 minimaxMove(board, chess.WHITE)
+            elif randomAlg:
+                randomMove(board, chess.WHITE)
             else:
                 playerMove(board)
         else:
@@ -355,8 +319,8 @@ def main():
     print("Result: " + board.result())
     print(len(board.move_stack))
 
-    raise SystemExit
-
 
 if __name__ == "__main__":
     main()
+
+    raise SystemExit
