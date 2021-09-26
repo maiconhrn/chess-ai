@@ -3,8 +3,8 @@
 
 import argparse
 import random
+import time
 from math import inf
-from typing import List
 
 import chess
 import chess.engine
@@ -29,26 +29,6 @@ def isEndGame(board: chess.Board):
                 return False
 
     return True
-
-
-def moveGivesCheckValuesHeuristic(board: Board, move: chess.Move, maximizingColor: chess.Color):
-    if board.gives_mate(move):
-        return inf if board.color_at(move.from_square) == maximizingColor else -inf
-
-    if board.gives_check(move):
-        return 100 if board.color_at(move.from_square) == maximizingColor else -100
-
-    return 0
-
-
-def piecesMovesValuesHeuristic(board: Board, move: chess.Move, maximizingColor: chess.Color):
-    squareValues = {"e4": 50, "e5": 50, "d4": 50, "d5": 50, "c6": 25, "d6": 25, "e6": 25, "f6": 25,
-                    "c3": 25, "d3": 25, "e3": 25, "f3": 25, "c4": 25, "c5": 25, "f4": 25, "f5": 25}
-    if move.to_square in squareValues:
-        value = squareValues[move.to_square]
-        return value if board.turn == maximizingColor else -value
-    else:
-        return 0
 
 
 def piecesSqauredTableValuesHeuristic(piece: chess.Piece, square: chess.Square, maximizingColor: chess.Color, endGame: bool):
@@ -90,33 +70,21 @@ def piecesValuesHeuristic(board: Board, maximizingColor: chess.Color):
 
 
 def evaluateHeuristic(board: Board, maximizingColor: chess.Color):
-    h1 = h2 = h3 = h4 = h5 = 0
+    h1 = h2 = h3 = 0
 
     h1 = piecesValuesHeuristic(board, maximizingColor)
-
-    # for move in board.legal_moves:
-    #     h2 += piecesMovesValuesHeuristic(board, move, maximizingColor)
-    #     h3 += moveGivesCheckValuesHeuristic(board, move, maximizingColor)
 
     for square in chess.SQUARES:
         piece = board.piece_at(square)
         if not piece:
             continue
 
-        h4 += piecesSqauredTableValuesHeuristic(
+        h2 += piecesSqauredTableValuesHeuristic(
             piece, square, maximizingColor, board.endGame)
-        h5 += defendingPieceMovesValuesHeuristic(
+        h3 += defendingPieceMovesValuesHeuristic(
             board, square, maximizingColor)
 
-    return h1 + h2 + h3 + h4 + h5
-
-
-def getOrderedMoves(board: chess.Board, maximizingColor: chess.Color, endGame: bool) -> List[chess.Move]:
-    # return sorted(board.legal_moves,
-    #               key=lambda move: moveValue(
-    #                   board, move, maximizingColor, endGame),
-    #               reverse=board.turn != maximizingColor)
-    return board.legal_moves
+    return h1 + h2 + h3
 
 
 def moveValue(board: chess.Board, move: chess.Move, maximizingColor: chess.Color, endgame: bool) -> float:
@@ -160,7 +128,7 @@ def minimax(board: Board, depth: int, alpha: int, beta: int, maximizingPlayer: b
     if maximizingPlayer:
         maxEval = -inf
 
-        for move in getOrderedMoves(board, maximizingColor, board.endGame):
+        for move in board.legal_moves:
             board.push(move)
             currEval = minimax(board, depth - 1, alpha,
                                beta, False, maximizingColor)[1]
@@ -177,7 +145,7 @@ def minimax(board: Board, depth: int, alpha: int, beta: int, maximizingPlayer: b
     else:
         minEval = inf
 
-        for move in getOrderedMoves(board, maximizingColor, board.endGame):
+        for move in board.legal_moves:
             board.push(move)
             currEval = minimax(board, depth - 1, alpha,
                                beta, True, maximizingColor)[1]
@@ -219,12 +187,18 @@ def printBoard(board: Board):
 
 def getArgs():
     parser = argparse.ArgumentParser(description="Play Chess.")
-    parser.add_argument("-xe", "--xengine",
+    parser.add_argument("-d", "--depth", type=int,
+                        help="Depth do search algorithm", required=True)
+    parser.add_argument("-mmxe", "--mmxengine",
                         help="Engine path to play with minimax algorithm")
-    parser.add_argument("-xi", "--xitself", type=bool,
+    parser.add_argument("-mmxi", "--mmxitself", type=bool,
                         help="Minimax vs minimax")
-    parser.add_argument("-xr", "--xrandom", type=bool,
+    parser.add_argument("-mmxr", "--mmxrandom", type=bool,
                         help="Minimax vs random move algorithm")
+    parser.add_argument("-pxr", "--pxrandom", type=bool,
+                        help="Player vs random move algorithm")
+    parser.add_argument("-pxmm", "--pxminimax", type=bool,
+                        help="Player vs minimax move algorithm")
     return parser.parse_args()
 
 
@@ -253,16 +227,16 @@ def playerMove(board: Board):
             print(e)
 
 
-def minimaxMove(board: Board, maximizingColor: chess.Color):
+def minimaxMove(board: Board, maximizingColor: chess.Color, depth: int):
     global boardAux
-    move = minimax(board, 4, -inf, inf, True, maximizingColor)[0]
+    move = minimax(board, depth, -inf, inf, True, maximizingColor)[0]
     board.push(move)
     boardAux.push(move)
 
 
-def randomMove(board: Board, maximizingColor: chess.Color):
+def randomMove(board: Board, maximizingColor: chess.Color, depth: int):
     global boardAux
-    move = randomStateMove(board, 4, maximizingColor)
+    move = randomStateMove(board, depth, maximizingColor)
     board.push(move)
     boardAux.push(move)
 
@@ -272,14 +246,18 @@ def who(player):
 
 
 def main():
+    startTime = time.time()
     args = getArgs()
     board = Board()
 
     printBoard(board)
 
-    engine = args.xengine and chess.engine.SimpleEngine.popen_uci(args.xengine)
-    itself = args.xitself
-    randomAlg = args.xrandom
+    engine = args.mmxengine and chess.engine.SimpleEngine.popen_uci(
+        args.mmxengine)
+    itself = args.mmxitself
+    mmxrandom = args.mmxrandom
+    playerXRandom = args.pxrandom
+    playerXMinimax = args.pxminimax
 
     if engine:
         engine.configure({"Skill Level": 0})
@@ -289,16 +267,20 @@ def main():
 
         print(f"{who(board.turn)} turn:")
         if board.turn == chess.WHITE:
-            if engine:
-                engineMove(board, engine)
-            elif itself:
-                minimaxMove(board, chess.WHITE)
-            elif randomAlg:
-                randomMove(board, chess.WHITE)
+            if not playerXRandom and not playerXMinimax:
+                if engine:
+                    engineMove(board, engine)
+                elif itself:
+                    minimaxMove(board, chess.WHITE, args.depth)
+                elif mmxrandom:
+                    randomMove(board, chess.WHITE, args.depth)
             else:
                 playerMove(board)
         else:
-            minimaxMove(board, chess.BLACK)
+            if playerXMinimax or engine or itself or mmxrandom:
+                minimaxMove(board, chess.BLACK, args.depth)
+            else:
+                randomMove(board, chess.BLACK, args.depth)
 
         printBoard(board)
         print("========================================", end="\n\n")
@@ -316,11 +298,14 @@ def main():
         msg = "Draw: claim"
 
     print(msg)
-    print("Result: " + board.result())
-    print(len(board.move_stack))
+    print(f"Result: {board.result()}")
+    print(f"Move qtd: {len(board.move_stack)}")
+    print(f"Exec time: {(time.time() - startTime)}s")
+
+    if engine:
+        engine.quit()
 
 
 if __name__ == "__main__":
     main()
-
-    raise SystemExit
+    quit()
