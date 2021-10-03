@@ -87,40 +87,6 @@ def evaluateHeuristic(board: Board, maximizingColor: chess.Color):
     return h1 + h2 + h3
 
 
-def moveValue(board: chess.Board, move: chess.Move, maximizingColor: chess.Color, endgame: bool) -> float:
-    if move.promotion is not None:
-        return -float("inf") if board.turn != maximizingColor else float("inf")
-
-    piece = board.piece_at(move.from_square)
-    fromValue = piecesSqauredTableValuesHeuristic(
-        piece, move.from_square, maximizingColor, endgame)
-    toValue = piecesSqauredTableValuesHeuristic(
-        piece, move.to_square, maximizingColor, endgame)
-    positionChange = toValue - fromValue
-
-    captureValue = 0.0
-    if board.is_capture(move):
-        captureValue = evaluateCapture(board, move)
-
-    currentMoveValue = captureValue + positionChange
-    if board.turn != maximizingColor:
-        currentMoveValue = -currentMoveValue
-
-    return currentMoveValue
-
-
-def evaluateCapture(board: chess.Board, move: chess.Move) -> float:
-    if board.is_en_passant(move):
-        return PIECE_VALUES[chess.PAWN]
-    toPiece = board.piece_at(move.to_square)
-    fromPiece = board.piece_at(move.from_square)
-    if toPiece is None or fromPiece is None:
-        raise Exception(
-            f"Pieces were expected at _both_ {move.to_square} and {move.from_square}"
-        )
-    return PIECE_VALUES[toPiece.piece_type] - PIECE_VALUES[fromPiece.piece_type]
-
-
 def minimax(board: Board, depth: int, alpha: int, beta: int, maximizingPlayer: bool, maximizingColor: chess.Color):
     if depth == 0 or board.is_game_over():
         return None, evaluateHeuristic(board, maximizingColor)
@@ -185,20 +151,24 @@ def printBoard(board: Board):
     print("Black score: " + str(board.blackScore))
 
 
-def getArgs():
+def parseArgs():
     parser = argparse.ArgumentParser(description="Play Chess.")
+
     parser.add_argument("-d", "--depth", type=int,
-                        help="Depth do search algorithm", required=True)
-    parser.add_argument("-mmxe", "--mmxengine",
-                        help="Engine path to play with minimax algorithm")
-    parser.add_argument("-mmxi", "--mmxitself", type=bool,
-                        help="Minimax vs minimax")
-    parser.add_argument("-mmxr", "--mmxrandom", type=bool,
-                        help="Minimax vs random move algorithm")
-    parser.add_argument("-pxr", "--pxrandom", type=bool,
-                        help="Player vs random move algorithm")
-    parser.add_argument("-pxmm", "--pxminimax", type=bool,
-                        help="Player vs minimax move algorithm")
+                        help="Depth do search algorithm", default=4)
+
+    group = parser.add_mutually_exclusive_group(required=True)
+    group.add_argument("-mmxe", "--mmxengine",
+                       help="Engine path to play with minimax algorithm")
+    group.add_argument("-mmxi", "--mmxitself", type=bool,
+                       help="Minimax vs minimax")
+    group.add_argument("-mmxr", "--mmxrandom", type=bool,
+                       help="Minimax vs random move algorithm")
+    group.add_argument("-pxr", "--pxrandom", type=bool,
+                       help="Player vs random move algorithm")
+    group.add_argument("-pxmm", "--pxminimax", type=bool,
+                       help="Player vs minimax move algorithm")
+
     return parser.parse_args()
 
 
@@ -247,7 +217,7 @@ def who(player):
 
 def main():
     startTime = time.time()
-    args = getArgs()
+    args = parseArgs()
     board = Board()
 
     printBoard(board)
